@@ -1,0 +1,9 @@
+numpy
+pillow
+matplotlib
+pygame
+keyboard
+requests
+scipy
+pywin32
+opencv-python
