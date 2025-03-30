@@ -21,7 +21,7 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/webcam-pulse-detector.git
+   git clone https://github.com/0treble/WebcamPulseDetector
    cd webcam-pulse-detector
    ```
 
@@ -32,11 +32,14 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
 
 ## Planned Features (TODO)
 - [ ] Further data processing and SNR improvements
-- [ ] GUI interface (Tkinter)
-  - [ ] Checkboxes to enable/disable detection regions
-  - [ ] Adjustable detection box offsets
-  - [ ] Adjustable region weights
-  - [ ] Export data functionality
+- [x] GUI interface (Tkinter)
+  - [x] Checkboxes to enable/disable detection regions
+  - [x] Adjustable:
+    - [x] Detection box offsets
+    - [x] Region weights
+    - [ ] Box widths/heights
+    - [ ] Bandpass settings
+- [ ] Export data functionality
 
 ## Usage
 1. Position yourself in front of the webcam (well-lit environment works best)
@@ -65,7 +68,8 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
   - SNR thresholding (minimum SNR = 2.0)
 
 ## Customization Options
-You can adjust these parameters in `processor.py`:
+You can use the built-in options menu in the top-right corner of the running program to dynamically
+change the parameters, or you can also adjust the default values in `processor.py`:
 - `buffer_size`: Number of frames to analyze (default: 250)
 - `region_weights`: Contribution of each region to final signal
 - `valid_pulse_range`: Acceptable BPM range (default: 50-160)

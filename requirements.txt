@@ -7,3 +7,5 @@ requests
 scipy
 pywin32
 opencv-python
+ttkthemes
+pyinstaller

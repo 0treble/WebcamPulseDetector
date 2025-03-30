@@ -1,70 +1,515 @@
-import matplotlib.pyplot as plt
+import tkinter as tk
+from tkinter import ttk
+from ttkthemes import ThemedStyle
+from PIL import Image, ImageTk, ImageDraw
 import numpy as np
 import logging
-from matplotlib.gridspec import GridSpec
+import matplotlib
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+
+matplotlib.use('TkAgg')
 
 
 class PulseVisualizer:
-    def __init__(self, show_plots=True):
-        self.fig = None
-        self.cam_ax = None
-        self.signal_ax = None
-        self.fft_ax = None
+    def __init__(self, root, show_plots=True):
+        self.peak_marker = None
+        self.tk_image = None
+        self.bpm_text = None
+        self.root = root
         self.show_plots = show_plots
+        self.settings_window = None
+
+        # Default parameters
+        self.params = {
+            'min_bpm': 40,
+            'max_bpm': 180,
+            'smoothing': 0.7,
+            'theme': 'equilux',
+            'regions': {
+                'forehead': {'enabled': True, 'weight': 0.8, 'offset_y': 0.18, 'offset_x': 0, 'scale_w': 0.35, 'scale_h': 0.25},
+                'left_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0.50, 'offset_x': -0.2, 'scale_w': 0.2, 'scale_h': 0.15},
+                'right_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0.50, 'offset_x': 0.2, 'scale_w': 0.2, 'scale_h': 0.15}
+            },
+            'buffer_size': 250,
+            'bandpass_low': 0.75,
+            'bandpass_high': 4.0
+        }
+
+        # Apply the theme
+        self.style = ThemedStyle(self.root)
+        self.style.set_theme(self.params['theme'])
+
+        # Configure custom colors
+        self._configure_colors()
         self._setup_display()
+        self._add_settings_button()
+
+    def _add_settings_button(self):
+        """Add a settings button to the window"""
+        settings_frame = ttk.Frame(self.root)
+        settings_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=10)
+
+        self.settings_btn = ttk.Button(
+                settings_frame,
+                text="⚙",
+                command=self._open_settings,
+                style='Toolbutton')
+
+        self.settings_btn.pack()
+
+    def _open_settings(self):
+        """Open the settings window"""
+        if self.settings_window and self.settings_window.winfo_exists():
+            self.settings_window.lift()
+            return
+
+        self.settings_window = tk.Toplevel(self.root)
+        self.settings_window.title("Advanced Settings")
+        self.settings_window.geometry("320x690")
+        self.settings_window.resizable(False, True)
+
+        # Prevent multiple settings windows
+        self.settings_window.protocol("WM_DELETE_WINDOW", self._close_settings)
+
+        # Add settings controls
+        self._create_settings_controls()
+
+    def _close_settings(self):
+        """Close the settings window"""
+        if self.settings_window:
+            self.settings_window.destroy()
+            self.settings_window = None
+
+    def _create_settings_controls(self):
+        """Create the advanced settings controls"""
+        if not self.settings_window:
+            return
+
+        # Create main container with scrollbar
+        container = ttk.Frame(self.settings_window)
+        canvas = tk.Canvas(container)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        container.pack(fill="both", expand=True)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Add content to scrollable frame
+        main_frame = ttk.Frame(scrollable_frame, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # BPM Range
+        ttk.Label(main_frame, text="BPM Range:").grid(row=0, column=0, sticky='w', pady=5)
+        range_frame = ttk.Frame(main_frame)
+        range_frame.grid(row=0, column=1, sticky='ew', pady=5)
+
+        ttk.Label(range_frame, text="Min:").pack(side=tk.LEFT)
+        self.min_bpm_var = tk.IntVar(value=self.params['min_bpm'])
+        ttk.Spinbox(
+            range_frame,
+            from_=30,
+            to=100,
+            textvariable=self.min_bpm_var,
+            width=5
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(range_frame, text="Max:").pack(side=tk.LEFT)
+        self.max_bpm_var = tk.IntVar(value=self.params['max_bpm'])
+        ttk.Spinbox(
+            range_frame,
+            from_=60,
+            to=250,
+            textvariable=self.max_bpm_var,
+            width=5
+        ).pack(side=tk.LEFT, padx=5)
+
+        # Smoothing Factor
+        ttk.Label(main_frame, text="Smoothing Factor:").grid(row=1, column=0, sticky='w', pady=5)
+        self.smoothing_var = tk.DoubleVar(value=self.params['smoothing'])
+        ttk.Scale(
+            main_frame,
+            from_=0.1,
+            to=1.0,
+            variable=self.smoothing_var,
+            orient=tk.HORIZONTAL
+        ).grid(row=1, column=1, sticky='ew', pady=5)
+
+        # Buffer Size
+        ttk.Label(main_frame, text="Buffer Size:").grid(row=2, column=0, sticky='w', pady=5)
+        self.buffer_size_var = tk.IntVar(value=self.params['buffer_size'])
+        ttk.Spinbox(
+            main_frame,
+            from_=50,
+            to=500,
+            textvariable=self.buffer_size_var,
+            width=7
+        ).grid(row=2, column=1, sticky='w', pady=5)
+
+        # Bandpass Filter
+        ttk.Label(main_frame, text="Bandpass Filter (Hz):").grid(row=3, column=0, sticky='w', pady=5)
+        bandpass_frame = ttk.Frame(main_frame)
+        bandpass_frame.grid(row=3, column=1, sticky='ew', pady=5)
+
+        ttk.Label(bandpass_frame, text="Low:").pack(side=tk.LEFT)
+        self.bandpass_low_var = tk.DoubleVar(value=self.params['bandpass_low'])
+        ttk.Spinbox(
+            bandpass_frame,
+            from_=0.5,
+            to=3.0,
+            increment=0.1,
+            textvariable=self.bandpass_low_var,
+            width=5
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(bandpass_frame, text="High:").pack(side=tk.LEFT)
+        self.bandpass_high_var = tk.DoubleVar(value=self.params['bandpass_high'])
+        ttk.Spinbox(
+            bandpass_frame,
+            from_=1.0,
+            to=5.0,
+            increment=0.1,
+            textvariable=self.bandpass_high_var,
+            width=5
+        ).pack(side=tk.LEFT, padx=5)
+
+        # Region Settings
+        ttk.Label(main_frame, text="Detection Regions:", font=('TkDefaultFont', 10, 'bold')).grid(row=4, column=0, columnspan=2, sticky='w', pady=(15,5))
+
+        # Forehead Settings
+        self.forehead_enabled_var = tk.BooleanVar(value=self.params['regions']['forehead']['enabled'])
+        forehead_frame = ttk.LabelFrame(main_frame, text="Forehead", padding=5)
+        forehead_frame.grid(row=5, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+
+        ttk.Checkbutton(
+            forehead_frame,
+            text="Enable",
+            variable=self.forehead_enabled_var
+        ).grid(row=0, column=0, sticky='w')
+
+        ttk.Label(forehead_frame, text="Weight:").grid(row=0, column=1, sticky='e')
+        self.forehead_weight_var = tk.DoubleVar(value=self.params['regions']['forehead']['weight'])
+        ttk.Spinbox(
+            forehead_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.forehead_weight_var,
+            width=5
+        ).grid(row=0, column=2, sticky='w', padx=5)
+
+        ttk.Label(forehead_frame, text="Y Offset:").grid(row=1, column=0, sticky='e')
+        self.forehead_offset_y_var = tk.DoubleVar(value=self.params['regions']['forehead']['offset_y'])
+        ttk.Spinbox(
+            forehead_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.forehead_offset_y_var,
+            width=5
+        ).grid(row=1, column=1, sticky='w', padx=5)
+
+        ttk.Label(forehead_frame, text="Width Scale:").grid(row=1, column=2, sticky='e')
+        self.forehead_scale_w_var = tk.DoubleVar(value=self.params['regions']['forehead']['scale_w'])
+        ttk.Spinbox(
+            forehead_frame,
+            from_=0.1,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.forehead_scale_w_var,
+            width=5
+        ).grid(row=1, column=3, sticky='w', padx=5)
+
+        # Left Cheek Settings
+        self.left_cheek_enabled_var = tk.BooleanVar(value=self.params['regions']['left_cheek']['enabled'])
+        left_cheek_frame = ttk.LabelFrame(main_frame, text="Left Cheek", padding=5)
+        left_cheek_frame.grid(row=6, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+
+        ttk.Checkbutton(
+            left_cheek_frame,
+            text="Enable",
+            variable=self.left_cheek_enabled_var
+        ).grid(row=0, column=0, sticky='w')
+
+        ttk.Label(left_cheek_frame, text="Weight:").grid(row=0, column=1, sticky='e')
+        self.left_cheek_weight_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['weight'])
+        ttk.Spinbox(
+            left_cheek_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.left_cheek_weight_var,
+            width=5
+        ).grid(row=0, column=2, sticky='w', padx=5)
+
+        ttk.Label(left_cheek_frame, text="X Offset:").grid(row=1, column=0, sticky='e')
+        self.left_cheek_offset_x_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['offset_x'])
+        ttk.Spinbox(
+            left_cheek_frame,
+            from_=-0.5,
+            to=0.0,
+            increment=0.05,
+            textvariable=self.left_cheek_offset_x_var,
+            width=5
+        ).grid(row=1, column=1, sticky='w', padx=5)
+
+        ttk.Label(left_cheek_frame, text="Y Offset:").grid(row=1, column=2, sticky='e')
+        self.left_cheek_offset_y_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['offset_y'])
+        ttk.Spinbox(
+            left_cheek_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.left_cheek_offset_y_var,
+            width=5
+        ).grid(row=1, column=3, sticky='w', padx=5)
+
+        # Right Cheek Settings
+        self.right_cheek_enabled_var = tk.BooleanVar(value=self.params['regions']['right_cheek']['enabled'])
+        right_cheek_frame = ttk.LabelFrame(main_frame, text="Right Cheek", padding=5)
+        right_cheek_frame.grid(row=7, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+
+        ttk.Checkbutton(
+            right_cheek_frame,
+            text="Enable",
+            variable=self.right_cheek_enabled_var
+        ).grid(row=0, column=0, sticky='w')
+
+        ttk.Label(right_cheek_frame, text="Weight:").grid(row=0, column=1, sticky='e')
+        self.right_cheek_weight_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['weight'])
+        ttk.Spinbox(
+            right_cheek_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.right_cheek_weight_var,
+            width=5
+        ).grid(row=0, column=2, sticky='w', padx=5)
+
+        ttk.Label(right_cheek_frame, text="X Offset:").grid(row=1, column=0, sticky='e')
+        self.right_cheek_offset_x_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['offset_x'])
+        ttk.Spinbox(
+            right_cheek_frame,
+            from_=0.0,
+            to=0.5,
+            increment=0.05,
+            textvariable=self.right_cheek_offset_x_var,
+            width=5
+        ).grid(row=1, column=1, sticky='w', padx=5)
+
+        ttk.Label(right_cheek_frame, text="Y Offset:").grid(row=1, column=2, sticky='e')
+        self.right_cheek_offset_y_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['offset_y'])
+        ttk.Spinbox(
+            right_cheek_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.right_cheek_offset_y_var,
+            width=5
+        ).grid(row=1, column=3, sticky='w', padx=5)
+
+        # Theme Selection
+        ttk.Label(main_frame, text="Theme:").grid(row=8, column=0, sticky='w', pady=5)
+        self.theme_var = tk.StringVar(value=self.params['theme'])
+        ttk.Radiobutton(
+            main_frame,
+            text="Dark",
+            variable=self.theme_var,
+            value='equilux'
+        ).grid(row=8, column=1, sticky='w', pady=5)
+        ttk.Radiobutton(
+            main_frame,
+            text="Light",
+            variable=self.theme_var,
+            value='arc'
+        ).grid(row=9, column=1, sticky='w', pady=5)
+
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=10, column=0, columnspan=2, pady=10)
+
+        ttk.Button(
+            button_frame,
+            text="Apply",
+            command=self._apply_settings
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=self._close_settings
+        ).pack(side=tk.LEFT, padx=5)
+
+    def _apply_settings(self):
+        """Apply the selected settings"""
+        self.params = {
+            'min_bpm': self.min_bpm_var.get(),
+            'max_bpm': self.max_bpm_var.get(),
+            'smoothing': self.smoothing_var.get(),
+            'buffer_size': self.buffer_size_var.get(),
+            'bandpass_low': self.bandpass_low_var.get(),
+            'bandpass_high': self.bandpass_high_var.get(),
+            'theme': self.theme_var.get(),
+            'regions': {
+                'forehead': {
+                    'enabled': self.forehead_enabled_var.get(),
+                    'weight': self.forehead_weight_var.get(),
+                    'offset_y': self.forehead_offset_y_var.get(),
+                    'offset_x': 0,  # Forehead doesn't need X offset
+                    'scale_w': self.forehead_scale_w_var.get(),
+                    'scale_h': self.params['regions']['forehead']['scale_h']  # Keep original
+                },
+                'left_cheek': {
+                    'enabled': self.left_cheek_enabled_var.get(),
+                    'weight': self.left_cheek_weight_var.get(),
+                    'offset_y': self.left_cheek_offset_y_var.get(),
+                    'offset_x': self.left_cheek_offset_x_var.get(),
+                    'scale_w': self.params['regions']['left_cheek']['scale_w'],  # Keep original
+                    'scale_h': self.params['regions']['left_cheek']['scale_h']   # Keep original
+                },
+                'right_cheek': {
+                    'enabled': self.right_cheek_enabled_var.get(),
+                    'weight': self.right_cheek_weight_var.get(),
+                    'offset_y': self.right_cheek_offset_y_var.get(),
+                    'offset_x': self.right_cheek_offset_x_var.get(),
+                    'scale_w': self.params['regions']['right_cheek']['scale_w'],  # Keep original
+                    'scale_h': self.params['regions']['right_cheek']['scale_h']   # Keep original
+                }
+            }
+        }
+
+        # Update FFT plot range
+        if hasattr(self, 'fft_ax'):
+            self.fft_ax.set_xlim(self.params['min_bpm'], self.params['max_bpm'])
+            self.fft_canvas.draw()
+
+        # Update theme if changed
+        if self.style.theme_use() != self.params['theme']:
+            self.style.set_theme(self.params['theme'])
+            self._configure_colors()
+
+        self._close_settings()
+
+    def _configure_colors(self):
+        """Configure colors that work well with the Equilux theme"""
+        # Get colors from the theme
+        bg_color = self.style.lookup('TFrame', 'background')
+        fg_color = self.style.lookup('TLabel', 'foreground')
+
+        # Matplotlib colors that match the theme
+        self.plot_bg = '#2e2e2e'  # Slightly darker than Equilux default
+        self.plot_fg = '#e0e0e0'  # Light text
+        self.plot_grid = '#424242'  # Grid color
+        self.signal_color = '#4e9af5'  # Blue signal line
+        self.fft_color = '#4ef5a2'  # Green FFT line
+
+        # Configure matplotlib style
+        plt.style.use('dark_background')
+        matplotlib.rcParams.update({
+            'axes.facecolor': self.plot_bg,
+            'figure.facecolor': bg_color,
+            'axes.edgecolor': self.plot_fg,
+            'axes.labelcolor': self.plot_fg,
+            'text.color': self.plot_fg,
+            'xtick.color': self.plot_fg,
+            'ytick.color': self.plot_fg,
+            'grid.color': self.plot_grid
+        })
 
     def _setup_display(self):
-        """Initialize the display layout with original styling"""
-        plt.close('all')
-        self.fig = plt.figure(figsize=(15, 6), facecolor='#f0f0f0')
+        """Initialize the Tkinter display layout with Equilux theme"""
+        self.root.title("Pulse Detector")
+        self.root.geometry("1200x750")
 
-        # Create grid layout with original spacing
-        gs = GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1])
+        # Configure root window background
+        self.root.configure(bg=self.style.lookup('TFrame', 'background'))
 
-        # Webcam view (left side) - maintain 1:1 aspect ratio
-        self.cam_ax = self.fig.add_subplot(gs[:, 0])
-        self.cam_ax.set_title('Webcam View', pad=10, fontsize=12)
-        self.cam_ax.axis('off')
-        self.cam_img = self.cam_ax.imshow(np.zeros((480, 640, 3)),
-                                          aspect='auto',
-                                          vmin=0,
-                                          vmax=255)
+        # Create main container
+        self.main_frame = ttk.Frame(self.root)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Webcam view (left side)
+        self.cam_frame = ttk.Frame(self.main_frame)
+        self.cam_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.cam_label = ttk.Label(self.cam_frame)
+        self.cam_label.pack(fill=tk.BOTH, expand=True)
+
+        # Initialize with blank image
+        blank_image = Image.fromarray(np.zeros((480, 640, 3), dtype=np.uint8))
+        self.tk_image = ImageTk.PhotoImage(image=blank_image)
+        self.cam_label.config(image=self.tk_image)
 
         if self.show_plots:
-            # Signal plot (top right)
-            self.signal_ax = self.fig.add_subplot(gs[0, 1])
-            self.signal_ax.set_title('Pulse Signal', pad=10, fontsize=12)
-            self.signal_ax.grid(True, linestyle='--', alpha=0.6)
-            self.signal_ax.set_facecolor('#f8f8f8')
-            self.signal_line, = self.signal_ax.plot([], [], 'b-', linewidth=1.5)
-            self.signal_ax.set_xlabel('Time (s)', fontsize=10)
-            self.signal_ax.set_ylabel('Intensity', fontsize=10)
-            self.signal_ax.tick_params(labelsize=9)
+            # Right side container for plots
+            self.plots_frame = ttk.Frame(self.main_frame)
+            self.plots_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-            # FFT plot (bottom right) - with original grid style
-            self.fft_ax = self.fig.add_subplot(gs[1, 1])
-            self.fft_ax.set_title('Frequency Spectrum (40-180 BPM)', pad=10, fontsize=12)
-            self.fft_ax.grid(True, which='both', linestyle='--', alpha=0.6)
-            self.fft_ax.set_facecolor('#f8f8f8')
-            self.fft_line, = self.fft_ax.plot([], [], 'g-', linewidth=1.5)
-            self.fft_ax.set_xlim(40, 180)
-            self.fft_ax.set_xlabel('BPM', fontsize=10)
-            self.fft_ax.set_ylabel('Amplitude', fontsize=10)
-            self.fft_ax.tick_params(labelsize=9)
+            # Signal plot (top)
+            self.signal_frame = ttk.Frame(self.plots_frame)
+            self.signal_frame.pack(fill=tk.BOTH, expand=True)
 
-            # Add minor grid lines for better readability
-            self.fft_ax.grid(True, which='minor', linestyle=':', alpha=0.4)
+            self.signal_fig = Figure(figsize=(6, 3), dpi=100, facecolor=self.plot_bg)
+            self.signal_ax = self.signal_fig.add_subplot(111)
+            self.signal_ax.set_title('Pulse Signal', pad=10, fontsize=12, color=self.plot_fg)
+            self.signal_ax.grid(True, linestyle='--', alpha=0.6, color=self.plot_grid)
+            self.signal_ax.set_facecolor(self.plot_bg)
+            self.signal_line, = self.signal_ax.plot([], [], color=self.signal_color, linewidth=1.5)
+            self.signal_ax.set_xlabel('Time (s)', fontsize=10, color=self.plot_fg)
+            self.signal_ax.set_ylabel('Intensity', fontsize=10, color=self.plot_fg)
+            self.signal_ax.tick_params(colors=self.plot_fg, labelsize=9)
+
+            self.signal_canvas = FigureCanvasTkAgg(self.signal_fig, master=self.signal_frame)
+            self.signal_canvas.draw()
+            self.signal_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            # FFT plot (bottom)
+            self.fft_frame = ttk.Frame(self.plots_frame)
+            self.fft_frame.pack(fill=tk.BOTH, expand=True)
+
+            self.fft_fig = Figure(figsize=(6, 3), dpi=100, facecolor=self.plot_bg)
+            self.fft_ax = self.fft_fig.add_subplot(111)
+            self.fft_ax.set_title('Frequency Spectrum (BPM)', pad=10, fontsize=12, color=self.plot_fg)
+            self.fft_ax.grid(True, which='both', linestyle='--', alpha=0.6, color=self.plot_grid)
+            self.fft_ax.set_facecolor(self.plot_bg)
+            self.fft_line, = self.fft_ax.plot([], [], color=self.fft_color, linewidth=1.5)
+            self.fft_ax.set_xlim(self.params['min_bpm'], self.params['max_bpm'])
+            self.fft_ax.set_xlabel('BPM', fontsize=10, color=self.plot_fg)
+            self.fft_ax.set_ylabel('Amplitude', fontsize=10, color=self.plot_fg)
+            self.fft_ax.tick_params(colors=self.plot_fg, labelsize=9)
+            self.fft_ax.grid(True, which='minor', linestyle=':', alpha=0.4, color=self.plot_grid)
             self.fft_ax.minorticks_on()
 
-        plt.ion()
-        plt.tight_layout()
-        plt.show()
+            self.fft_canvas = FigureCanvasTkAgg(self.fft_fig, master=self.fft_frame)
+            self.fft_canvas.draw()
+            self.fft_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            # Status bar
+            self.status_var = tk.StringVar()
+            self.status_var.set("Ready")
+            self.status_bar = ttk.Label(self.root, textvariable=self.status_var,
+                                        relief=tk.SUNKEN, padding=(5, 5))
+            self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def update_plots(self, processor):
-        """Update all visualizations with proper styling"""
+        """Update all visualizations"""
         try:
-            # Update webcam view (maintain 1:1 aspect ratio)
-            self.cam_img.set_array(processor.frame_out)
+            # Update webcam view
+            img = Image.fromarray(processor.frame_out)
+            self.tk_image = ImageTk.PhotoImage(image=img)
+            self.cam_label.config(image=self.tk_image)
 
             if self.show_plots and hasattr(processor, 'regions'):
                 # Update signal plot
@@ -78,24 +523,23 @@ class PulseVisualizer:
                     self.signal_line.set_data(times[-len(signal):] - times[0], signal)
                     self.signal_ax.relim()
                     self.signal_ax.autoscale_view()
-                    self.signal_ax.grid(True, linestyle='--', alpha=0.6)
+                    self.signal_canvas.draw()
 
-                # Update FFT plot with original grid style
+                # Update FFT plot
                 if (hasattr(processor, 'freqs') and
                         hasattr(processor, 'fft') and
                         len(processor.freqs) > 0 and
                         len(processor.fft) > 0):
 
                     bpm = processor.freqs * 60
-                    mask = (bpm >= 40) & (bpm <= 180)
+                    mask = (bpm >= self.params['min_bpm']) & (bpm <= self.params['max_bpm'])
 
                     if np.any(mask):
                         self.fft_line.set_data(bpm[mask], processor.fft[mask])
                         self.fft_ax.relim()
                         self.fft_ax.autoscale_view()
-                        self.fft_ax.grid(True, which='both', linestyle='--', alpha=0.6)
 
-                        if (processor.bpm > 40 and
+                        if (processor.bpm > self.params['min_bpm'] and
                                 hasattr(processor, 'snr') and
                                 len(bpm[mask]) > 0 and
                                 len(processor.fft[mask]) > 0):
@@ -103,7 +547,7 @@ class PulseVisualizer:
                             peak_idx = np.argmin(np.abs(bpm[mask] - processor.bpm))
                             if peak_idx < len(bpm[mask]) and peak_idx < len(processor.fft[mask]):
                                 # Remove previous peak marker if it exists
-                                if hasattr(self, 'peak_marker'):
+                                if hasattr(self, 'peak_marker') and self.peak_marker is not None:
                                     self.peak_marker.remove()
                                 self.peak_marker, = self.fft_ax.plot(
                                     bpm[mask][peak_idx],
@@ -111,20 +555,54 @@ class PulseVisualizer:
                                     'ro', markersize=8)
 
                                 # Remove previous text if it exists
-                                if hasattr(self, 'bpm_text'):
+                                if hasattr(self, 'bpm_text') and self.bpm_text is not None:
                                     self.bpm_text.remove()
-                                self.bpm_text = self.fft_ax.text(
-                                    processor.bpm + 5,
-                                    processor.fft[mask][peak_idx],
-                                    f'{processor.bpm:.1f} BPM\nSNR: {processor.snr:.1f}',
-                                    color='r', fontsize=10, bbox=dict(facecolor='white', alpha=0.7))
 
-            plt.pause(0.001)
+                                # Get current axis limits
+                                xlim = self.fft_ax.get_xlim()
+                                ylim = self.fft_ax.get_ylim()
+
+                                # Calculate text position with boundary checking
+                                text_x = processor.bpm + 5
+                                text_y = processor.fft[mask][peak_idx]
+
+                                # Adjust position if it would go beyond x-axis limits
+                                if text_x > xlim[1] - 15:  # Leave some margin (15 units)
+                                    text_x = processor.bpm - 15  # Move to left side of peak
+
+                                    # If still beyond left limit, place at edge
+                                    if text_x < xlim[0] + 5:
+                                        text_x = xlim[0] + 5
+
+                                # Adjust position if it would go beyond y-axis limits
+                                if text_y > ylim[1] * 0.9:  # If near top, move below peak
+                                    text_y = processor.fft[mask][peak_idx] * 0.8
+
+                                    # If still beyond bottom limit, place at edge
+                                    if text_y < ylim[0] + (ylim[1] - ylim[0]) * 0.1:
+                                        text_y = ylim[0] + (ylim[1] - ylim[0]) * 0.1
+
+                                # Create the text with adjusted position
+                                self.bpm_text = self.fft_ax.text(
+                                    text_x,
+                                    text_y,
+                                    f'{processor.bpm:.1f} BPM\nSNR: {processor.snr:.1f}',
+                                    color='#3a3a3a',
+                                    fontsize=10,
+                                    bbox=dict(facecolor='white', alpha=0.7)
+                                )
+                        self.fft_canvas.draw()
+
+            # Update status
+            if hasattr(processor, 'bpm'):
+                status = f"Current BPM: {processor.bpm:.1f}" if processor.bpm > self.params['min_bpm'] else "Finding pulse..."
+                self.status_var.set(status)
+
+            self.root.update()
 
         except Exception as e:
             logging.error(f"Visualization error: {e}")
-            self._setup_display()
 
     def close(self):
         """Clean up resources"""
-        plt.close('all')
+        self.root.destroy()
