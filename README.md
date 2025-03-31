@@ -23,7 +23,7 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/0treble/WebcamPulseDetector
+   git clone https://github.com/0treble/WebcamPulseDetector.git
    cd webcam-pulse-detector
    ```
 
@@ -33,15 +33,16 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
    ```
 
 ## Planned Features (TODO)
-- [ ] Further data processing and SNR improvements
 - [x] GUI interface (Tkinter)
   - [x] Checkboxes to enable/disable detection regions
   - [x] Adjustable:
     - [x] Detection box offsets
     - [x] Region weights
     - [x] Bandpass settings
-    - [ ] Box widths/heights
-- [ ] Export data functionality
+    - [x] Box widths/heights
+- [X] Export data functionality
+- [ ] Further data processing and SNR improvements
+- [ ] Create an executable file and attach it to repo
 
 ## Usage
 1. Position yourself in front of the webcam (well-lit environment works best)
@@ -71,7 +72,7 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
 
 ## Customization Options
 You can use the built-in options menu in the top-right corner of the running program to dynamically
-change the parameters
+change the parameters 
 
 ![Settings Menu](settings.png)
 

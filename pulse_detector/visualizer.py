@@ -1,19 +1,24 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 from ttkthemes import ThemedStyle
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk
 import numpy as np
 import logging
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+import os
+import time
+from datetime import datetime
 
 matplotlib.use('TkAgg')
 
 
 class PulseVisualizer:
     def __init__(self, root, show_plots=True):
+        self.root = root
+        self._root_initialized = True  # Track if root is valid
         self.peak_marker = None
         self.tk_image = None
         self.bpm_text = None
@@ -46,6 +51,11 @@ class PulseVisualizer:
         self._setup_display()
         self._add_settings_button()
 
+        self.save_file = None  # Track the current save file
+        self.last_save_time = 0  # For throttling saves
+        self.save_interval = 1.0  # Save every 1 second
+        self.save_data_var = tk.BooleanVar(value=False)
+
     def _add_settings_button(self):
         """Add a settings button to the window"""
         settings_frame = ttk.Frame(self.root)
@@ -66,8 +76,8 @@ class PulseVisualizer:
             return
 
         self.settings_window = tk.Toplevel(self.root)
-        self.settings_window.title("Advanced Settings")
-        self.settings_window.geometry("320x690")
+        self.settings_window.title("Settings")
+        self.settings_window.geometry("760x580")
         self.settings_window.resizable(False, False)
 
         # Prevent multiple settings windows
@@ -83,7 +93,7 @@ class PulseVisualizer:
             self.settings_window = None
 
     def _create_settings_controls(self):
-        """Create the advanced settings controls"""
+        """Create the settings controls"""
         if not self.settings_window:
             return
 
@@ -107,13 +117,29 @@ class PulseVisualizer:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Add content to scrollable frame
+        # Main content frame with two columns
         main_frame = ttk.Frame(scrollable_frame, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Column 1:
+        col1_frame = ttk.Frame(main_frame)
+        col1_frame.grid(row=0, column=0, padx=10, pady=5, sticky='nsew')
+
+        # Column 2:
+        col2_frame = ttk.Frame(main_frame)
+        col2_frame.grid(row=0, column=1, padx=10, pady=5, sticky='nsew')
+
+        # Column 3:
+        col3_frame = ttk.Frame(main_frame)
+        col3_frame.grid(row=0, column=2, padx=10, pady=5, sticky='nsew')
+
+        # Processing & Visualization section
+        proc_frame = ttk.LabelFrame(col1_frame, text="Processing & Visualization", padding=10)
+        proc_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
         # BPM Range
-        ttk.Label(main_frame, text="BPM Range:").grid(row=0, column=0, sticky='w', pady=5)
-        range_frame = ttk.Frame(main_frame)
+        ttk.Label(proc_frame, text="BPM Range:").grid(row=0, column=0, sticky='w', pady=5)
+        range_frame = ttk.Frame(proc_frame)
         range_frame.grid(row=0, column=1, sticky='ew', pady=5)
 
         ttk.Label(range_frame, text="Min:").pack(side=tk.LEFT)
@@ -137,10 +163,10 @@ class PulseVisualizer:
         ).pack(side=tk.LEFT, padx=5)
 
         # Smoothing Factor
-        ttk.Label(main_frame, text="Smoothing Factor:").grid(row=1, column=0, sticky='w', pady=5)
+        ttk.Label(proc_frame, text="Smoothing Factor:").grid(row=1, column=0, sticky='w', pady=5)
         self.smoothing_var = tk.DoubleVar(value=self.params['smoothing'])
         ttk.Scale(
-            main_frame,
+            proc_frame,
             from_=0.1,
             to=1.0,
             variable=self.smoothing_var,
@@ -148,19 +174,19 @@ class PulseVisualizer:
         ).grid(row=1, column=1, sticky='ew', pady=5)
 
         # Buffer Size
-        ttk.Label(main_frame, text="Buffer Size:").grid(row=2, column=0, sticky='w', pady=5)
+        ttk.Label(proc_frame, text="Buffer Size:").grid(row=2, column=0, sticky='w', pady=5)
         self.buffer_size_var = tk.IntVar(value=self.params['buffer_size'])
         ttk.Spinbox(
-            main_frame,
+            proc_frame,
             from_=50,
-            to=500,
+            to=1000,
             textvariable=self.buffer_size_var,
             width=7
         ).grid(row=2, column=1, sticky='w', pady=5)
 
         # Bandpass Filter
-        ttk.Label(main_frame, text="Bandpass Filter (Hz):").grid(row=3, column=0, sticky='w', pady=5)
-        bandpass_frame = ttk.Frame(main_frame)
+        ttk.Label(proc_frame, text="Bandpass Filter (Hz):").grid(row=3, column=0, sticky='w', pady=5)
+        bandpass_frame = ttk.Frame(proc_frame)
         bandpass_frame.grid(row=3, column=1, sticky='ew', pady=5)
 
         ttk.Label(bandpass_frame, text="Low:").pack(side=tk.LEFT)
@@ -185,160 +211,244 @@ class PulseVisualizer:
             width=5
         ).pack(side=tk.LEFT, padx=5)
 
-        # Region Settings
-        ttk.Label(main_frame, text="Detection Regions:", font=('TkDefaultFont', 10, 'bold')).grid(row=4, column=0, columnspan=2, sticky='w', pady=(15,5))
+        # Theme Selection
+        theme_frame = ttk.LabelFrame(col2_frame, text="Theme", padding=10)
+        theme_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        self.theme_var = tk.StringVar(value=self.params['theme'])
+        ttk.Radiobutton(
+            theme_frame,
+            text="Dark",
+            variable=self.theme_var,
+            value='equilux'
+        ).pack(anchor='w', pady=2)
+        ttk.Radiobutton(
+            theme_frame,
+            text="Light",
+            variable=self.theme_var,
+            value='arc'
+        ).pack(anchor='w', pady=2)
+
+        # Data Saving
+        save_frame = ttk.LabelFrame(col3_frame, text="Data Saving", padding=10)
+        save_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        ttk.Checkbutton(
+            save_frame,
+            text="Enable data saving to TXT",
+            variable=self.save_data_var
+        ).pack(anchor='w', pady=2)
 
         # Forehead Settings
         self.forehead_enabled_var = tk.BooleanVar(value=self.params['regions']['forehead']['enabled'])
-        forehead_frame = ttk.LabelFrame(main_frame, text="Forehead", padding=5)
-        forehead_frame.grid(row=5, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+        forehead_frame = ttk.LabelFrame(col1_frame, text="Forehead Region", padding=10)
+        forehead_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
         ttk.Checkbutton(
             forehead_frame,
             text="Enable",
             variable=self.forehead_enabled_var
-        ).grid(row=0, column=0, sticky='w')
+        ).pack(anchor='w', pady=2)
 
-        ttk.Label(forehead_frame, text="Weight:").grid(row=0, column=1, sticky='e')
+        settings_grid = ttk.Frame(forehead_frame)
+        settings_grid.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(settings_grid, text="Weight:").grid(row=0, column=0, sticky='e', padx=5, pady=2)
         self.forehead_weight_var = tk.DoubleVar(value=self.params['regions']['forehead']['weight'])
         ttk.Spinbox(
-            forehead_frame,
+            settings_grid,
             from_=0.0,
             to=1.0,
             increment=0.05,
             textvariable=self.forehead_weight_var,
             width=5
-        ).grid(row=0, column=2, sticky='w', padx=5)
+        ).grid(row=0, column=1, sticky='w', pady=2)
 
-        ttk.Label(forehead_frame, text="Y Offset:").grid(row=1, column=0, sticky='e')
+        ttk.Label(settings_grid, text="X Offset:").grid(row=1, column=0, sticky='e', padx=5, pady=2)
+        self.forehead_offset_x_var = tk.DoubleVar(value=self.params['regions']['forehead']['offset_x'])
+        ttk.Spinbox(
+            settings_grid,
+            from_=-0.5,
+            to=0.5,
+            increment=0.05,
+            textvariable=self.forehead_offset_x_var,
+            width=5
+        ).grid(row=1, column=1, sticky='w', pady=2)
+
+        ttk.Label(settings_grid, text="Y Offset:").grid(row=2, column=0, sticky='e', padx=5, pady=2)
         self.forehead_offset_y_var = tk.DoubleVar(value=self.params['regions']['forehead']['offset_y'])
         ttk.Spinbox(
-            forehead_frame,
+            settings_grid,
             from_=0.0,
             to=1.0,
             increment=0.05,
             textvariable=self.forehead_offset_y_var,
             width=5
-        ).grid(row=1, column=1, sticky='w', padx=5)
+        ).grid(row=2, column=1, sticky='w', pady=2)
 
-        ttk.Label(forehead_frame, text="Width Scale:").grid(row=1, column=2, sticky='e')
+        ttk.Label(settings_grid, text="Width Scale:").grid(row=3, column=0, sticky='e', padx=5, pady=2)
         self.forehead_scale_w_var = tk.DoubleVar(value=self.params['regions']['forehead']['scale_w'])
         ttk.Spinbox(
-            forehead_frame,
+            settings_grid,
             from_=0.1,
             to=1.0,
             increment=0.05,
             textvariable=self.forehead_scale_w_var,
             width=5
-        ).grid(row=1, column=3, sticky='w', padx=5)
+        ).grid(row=3, column=1, sticky='w', pady=2)
+
+        ttk.Label(settings_grid, text="Height Scale:").grid(row=4, column=0, sticky='e', padx=5, pady=2)
+        self.forehead_scale_h_var = tk.DoubleVar(value=self.params['regions']['forehead']['scale_h'])
+        ttk.Spinbox(
+            settings_grid,
+            from_=0.1,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.forehead_scale_h_var,
+            width=5
+        ).grid(row=4, column=1, sticky='w', pady=2)
 
         # Left Cheek Settings
         self.left_cheek_enabled_var = tk.BooleanVar(value=self.params['regions']['left_cheek']['enabled'])
-        left_cheek_frame = ttk.LabelFrame(main_frame, text="Left Cheek", padding=5)
-        left_cheek_frame.grid(row=6, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+        left_cheek_frame = ttk.LabelFrame(col2_frame, text="Left Cheek Region", padding=10)
+        left_cheek_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
         ttk.Checkbutton(
             left_cheek_frame,
             text="Enable",
             variable=self.left_cheek_enabled_var
-        ).grid(row=0, column=0, sticky='w')
+        ).pack(anchor='w', pady=2)
 
-        ttk.Label(left_cheek_frame, text="Weight:").grid(row=0, column=1, sticky='e')
+        settings_grid = ttk.Frame(left_cheek_frame)
+        settings_grid.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(settings_grid, text="Weight:").grid(row=0, column=0, sticky='e', padx=5, pady=2)
         self.left_cheek_weight_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['weight'])
         ttk.Spinbox(
-            left_cheek_frame,
+            settings_grid,
             from_=0.0,
             to=1.0,
             increment=0.05,
             textvariable=self.left_cheek_weight_var,
             width=5
-        ).grid(row=0, column=2, sticky='w', padx=5)
+        ).grid(row=0, column=1, sticky='w', pady=2)
 
-        ttk.Label(left_cheek_frame, text="X Offset:").grid(row=1, column=0, sticky='e')
+        ttk.Label(settings_grid, text="X Offset:").grid(row=1, column=0, sticky='e', padx=5, pady=2)
         self.left_cheek_offset_x_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['offset_x'])
         ttk.Spinbox(
-            left_cheek_frame,
+            settings_grid,
             from_=-0.5,
-            to=0.0,
+            to=0.5,
             increment=0.05,
             textvariable=self.left_cheek_offset_x_var,
             width=5
-        ).grid(row=1, column=1, sticky='w', padx=5)
+        ).grid(row=1, column=1, sticky='w', pady=2)
 
-        ttk.Label(left_cheek_frame, text="Y Offset:").grid(row=1, column=2, sticky='e')
+        ttk.Label(settings_grid, text="Y Offset:").grid(row=2, column=0, sticky='e', padx=5, pady=2)
         self.left_cheek_offset_y_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['offset_y'])
         ttk.Spinbox(
-            left_cheek_frame,
+            settings_grid,
             from_=0.0,
             to=1.0,
             increment=0.05,
             textvariable=self.left_cheek_offset_y_var,
             width=5
-        ).grid(row=1, column=3, sticky='w', padx=5)
+        ).grid(row=2, column=1, sticky='w', pady=2)
+
+        ttk.Label(settings_grid, text="Width Scale:").grid(row=3, column=0, sticky='e', padx=5, pady=2)
+        self.left_cheek_scale_w_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['scale_w'])
+        ttk.Spinbox(
+            settings_grid,
+            from_=0.1,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.left_cheek_scale_w_var,
+            width=5
+        ).grid(row=3, column=1, sticky='w', pady=2)
+
+        ttk.Label(settings_grid, text="Height Scale:").grid(row=4, column=0, sticky='e', padx=5, pady=2)
+        self.left_cheek_scale_h_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['scale_h'])
+        ttk.Spinbox(
+            settings_grid,
+            from_=0.1,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.left_cheek_scale_h_var,
+            width=5
+        ).grid(row=4, column=1, sticky='w', pady=2)
 
         # Right Cheek Settings
         self.right_cheek_enabled_var = tk.BooleanVar(value=self.params['regions']['right_cheek']['enabled'])
-        right_cheek_frame = ttk.LabelFrame(main_frame, text="Right Cheek", padding=5)
-        right_cheek_frame.grid(row=7, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+        right_cheek_frame = ttk.LabelFrame(col3_frame, text="Right Cheek Region", padding=10)
+        right_cheek_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
         ttk.Checkbutton(
             right_cheek_frame,
             text="Enable",
             variable=self.right_cheek_enabled_var
-        ).grid(row=0, column=0, sticky='w')
+        ).pack(anchor='w', pady=2)
 
-        ttk.Label(right_cheek_frame, text="Weight:").grid(row=0, column=1, sticky='e')
+        settings_grid = ttk.Frame(right_cheek_frame)
+        settings_grid.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(settings_grid, text="Weight:").grid(row=0, column=0, sticky='e', padx=5, pady=2)
         self.right_cheek_weight_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['weight'])
         ttk.Spinbox(
-            right_cheek_frame,
+            settings_grid,
             from_=0.0,
             to=1.0,
             increment=0.05,
             textvariable=self.right_cheek_weight_var,
             width=5
-        ).grid(row=0, column=2, sticky='w', padx=5)
+        ).grid(row=0, column=1, sticky='w', pady=2)
 
-        ttk.Label(right_cheek_frame, text="X Offset:").grid(row=1, column=0, sticky='e')
+        ttk.Label(settings_grid, text="X Offset:").grid(row=1, column=0, sticky='e', padx=5, pady=2)
         self.right_cheek_offset_x_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['offset_x'])
         ttk.Spinbox(
-            right_cheek_frame,
-            from_=0.0,
+            settings_grid,
+            from_=-0.5,
             to=0.5,
             increment=0.05,
             textvariable=self.right_cheek_offset_x_var,
             width=5
-        ).grid(row=1, column=1, sticky='w', padx=5)
+        ).grid(row=1, column=1, sticky='w', pady=2)
 
-        ttk.Label(right_cheek_frame, text="Y Offset:").grid(row=1, column=2, sticky='e')
+        ttk.Label(settings_grid, text="Y Offset:").grid(row=2, column=0, sticky='e', padx=5, pady=2)
         self.right_cheek_offset_y_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['offset_y'])
         ttk.Spinbox(
-            right_cheek_frame,
+            settings_grid,
             from_=0.0,
             to=1.0,
             increment=0.05,
             textvariable=self.right_cheek_offset_y_var,
             width=5
-        ).grid(row=1, column=3, sticky='w', padx=5)
+        ).grid(row=2, column=1, sticky='w', pady=2)
 
-        # Theme Selection
-        ttk.Label(main_frame, text="Theme:").grid(row=8, column=0, sticky='w', pady=5)
-        self.theme_var = tk.StringVar(value=self.params['theme'])
-        ttk.Radiobutton(
-            main_frame,
-            text="Dark",
-            variable=self.theme_var,
-            value='equilux'
-        ).grid(row=8, column=1, sticky='w', pady=5)
-        ttk.Radiobutton(
-            main_frame,
-            text="Light",
-            variable=self.theme_var,
-            value='arc'
-        ).grid(row=9, column=1, sticky='w', pady=5)
+        ttk.Label(settings_grid, text="Width Scale:").grid(row=3, column=0, sticky='e', padx=5, pady=2)
+        self.right_cheek_scale_w_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['scale_w'])
+        ttk.Spinbox(
+            settings_grid,
+            from_=0.1,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.right_cheek_scale_w_var,
+            width=5
+        ).grid(row=3, column=1, sticky='w', pady=2)
+
+        ttk.Label(settings_grid, text="Height Scale:").grid(row=4, column=0, sticky='e', padx=5, pady=2)
+        self.right_cheek_scale_h_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['scale_h'])
+        ttk.Spinbox(
+            settings_grid,
+            from_=0.1,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.right_cheek_scale_h_var,
+            width=5
+        ).grid(row=4, column=1, sticky='w', pady=2)
 
         # Buttons
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=10, column=0, columnspan=2, pady=10)
+        button_frame.grid(row=1, column=0, columnspan=3, pady=10)
 
         ttk.Button(
             button_frame,
@@ -352,8 +462,19 @@ class PulseVisualizer:
             command=self._close_settings
         ).pack(side=tk.LEFT, padx=5)
 
+        # Configure column weights
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+
     def _apply_settings(self):
         """Apply the selected settings"""
+        bandpass_low = self.bandpass_low_var.get()
+        bandpass_high = self.bandpass_high_var.get()
+
+        if bandpass_low >= bandpass_high:
+            messagebox.showerror("Invalid Settings", "Bandpass low must be less than high")
+            return
+
         self.params = {
             'min_bpm': self.min_bpm_var.get(),
             'max_bpm': self.max_bpm_var.get(),
@@ -367,25 +488,25 @@ class PulseVisualizer:
                     'enabled': self.forehead_enabled_var.get(),
                     'weight': self.forehead_weight_var.get(),
                     'offset_y': self.forehead_offset_y_var.get(),
-                    'offset_x': 0,  # Forehead doesn't need X offset
+                    'offset_x': self.forehead_offset_x_var.get(),
                     'scale_w': self.forehead_scale_w_var.get(),
-                    'scale_h': self.params['regions']['forehead']['scale_h']  # Keep original
+                    'scale_h': self.forehead_scale_h_var.get()
                 },
                 'left_cheek': {
                     'enabled': self.left_cheek_enabled_var.get(),
                     'weight': self.left_cheek_weight_var.get(),
                     'offset_y': self.left_cheek_offset_y_var.get(),
                     'offset_x': self.left_cheek_offset_x_var.get(),
-                    'scale_w': self.params['regions']['left_cheek']['scale_w'],  # Keep original
-                    'scale_h': self.params['regions']['left_cheek']['scale_h']   # Keep original
+                    'scale_w': self.left_cheek_scale_w_var.get(),
+                    'scale_h': self.left_cheek_scale_h_var.get()
                 },
                 'right_cheek': {
                     'enabled': self.right_cheek_enabled_var.get(),
                     'weight': self.right_cheek_weight_var.get(),
                     'offset_y': self.right_cheek_offset_y_var.get(),
                     'offset_x': self.right_cheek_offset_x_var.get(),
-                    'scale_w': self.params['regions']['right_cheek']['scale_w'],  # Keep original
-                    'scale_h': self.params['regions']['right_cheek']['scale_h']   # Keep original
+                    'scale_w': self.right_cheek_scale_w_var.get(),
+                    'scale_h': self.right_cheek_scale_h_var.get()
                 }
             }
         }
@@ -399,6 +520,22 @@ class PulseVisualizer:
         if self.style.theme_use() != self.params['theme']:
             self.style.set_theme(self.params['theme'])
             self._configure_colors()
+
+            # Handle data saving if enabled
+        if self.save_data_var.get() and not self.save_file:
+            default_filename = f"pulse_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            self.save_file = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                initialfile=default_filename,
+                filetypes=[("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")]
+            )
+            if self.save_file:
+                # Write header if file is new
+                if not os.path.exists(self.save_file):
+                    with open(self.save_file, 'w') as f:
+                        f.write("timestamp,bpm\n")
+        elif not self.save_data_var.get() and self.save_file:
+            self.save_file = None
 
         self._close_settings()
 
@@ -598,11 +735,37 @@ class PulseVisualizer:
                 status = f"Current BPM: {processor.bpm:.1f}" if processor.bpm > self.params['min_bpm'] else "Finding pulse..."
                 self.status_var.set(status)
 
+            if self.save_data_var.get() and hasattr(processor, 'bpm'):
+                self._save_data_to_file(processor)
+
             self.root.update()
 
         except Exception as e:
             logging.error(f"Visualization error: {e}")
 
+    def _save_data_to_file(self, processor):
+        """Save the current data to a text file"""
+        if not self.save_file or not hasattr(processor, 'bpm'):
+            return
+
+        current_time = time.time()
+        if current_time - self.last_save_time < self.save_interval:
+            return
+
+        try:
+            with open(self.save_file, 'a') as f:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                f.write(f"{timestamp},{processor.bpm:.1f}\n")
+            self.last_save_time = current_time
+        except Exception as e:
+            logging.error(f"Error saving data: {e}")
+
     def close(self):
         """Clean up resources"""
-        self.root.destroy()
+        try:
+            if self.root and self.root.winfo_exists():  # Check if window still exists
+                self.root.destroy()
+        except tk.TclError:
+            pass  # Window already destroyed
+        finally:
+            self.root = None  # Ensure reference is cleared

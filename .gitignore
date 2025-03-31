@@ -154,6 +154,9 @@ Thumbs.db
 haarcascade_*.xml
 !haarcascade_frontalface_alt.xml
 
+# Python cache
+*.pyc
+
 # Video files
 *.avi
 *.mp4
