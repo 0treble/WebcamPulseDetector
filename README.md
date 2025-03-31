@@ -5,6 +5,8 @@ This project is a real-time pulse detection system that uses a webcam to measure
 
 The project is inspired by [thearn/webcam-pulse-detector](https://github.com/thearn/webcam-pulse-detector/tree/no_openmdao), with enhancements in face tracking, signal processing, and visualization.
 
+![app_preview](preview.png)
+
 ## Features
 - **Real-time pulse detection**: Measures heart rate using a standard webcam
 - **Multi-region tracking**: Tracks forehead and both cheeks for robust signal detection
@@ -69,7 +71,11 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
 
 ## Customization Options
 You can use the built-in options menu in the top-right corner of the running program to dynamically
-change the parameters, or you can also adjust the default values in `processor.py`:
+change the parameters
+
+![Settings Menu](settings.png)
+
+or you can also adjust the default values in `processor.py`:
 - `buffer_size`: Number of frames to analyze (default: 250)
 - `region_weights`: Contribution of each region to final signal
 - `valid_pulse_range`: Acceptable BPM range (default: 50-160)

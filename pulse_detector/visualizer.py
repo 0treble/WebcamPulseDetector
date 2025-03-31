@@ -33,8 +33,8 @@ class PulseVisualizer:
                 'right_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0.50, 'offset_x': 0.2, 'scale_w': 0.2, 'scale_h': 0.15}
             },
             'buffer_size': 250,
-            'bandpass_low': 0.75,
-            'bandpass_high': 4.0
+            'bandpass_low': 45,
+            'bandpass_high': 240
         }
 
         # Apply the theme
@@ -68,7 +68,7 @@ class PulseVisualizer:
         self.settings_window = tk.Toplevel(self.root)
         self.settings_window.title("Advanced Settings")
         self.settings_window.geometry("320x690")
-        self.settings_window.resizable(False, True)
+        self.settings_window.resizable(False, False)
 
         # Prevent multiple settings windows
         self.settings_window.protocol("WM_DELETE_WINDOW", self._close_settings)
@@ -167,9 +167,9 @@ class PulseVisualizer:
         self.bandpass_low_var = tk.DoubleVar(value=self.params['bandpass_low'])
         ttk.Spinbox(
             bandpass_frame,
-            from_=0.5,
-            to=3.0,
-            increment=0.1,
+            from_=1,
+            to=100,
+            increment=1,
             textvariable=self.bandpass_low_var,
             width=5
         ).pack(side=tk.LEFT, padx=5)
@@ -178,9 +178,9 @@ class PulseVisualizer:
         self.bandpass_high_var = tk.DoubleVar(value=self.params['bandpass_high'])
         ttk.Spinbox(
             bandpass_frame,
-            from_=1.0,
-            to=5.0,
-            increment=0.1,
+            from_=100,
+            to=300,
+            increment=1,
             textvariable=self.bandpass_high_var,
             width=5
         ).pack(side=tk.LEFT, padx=5)

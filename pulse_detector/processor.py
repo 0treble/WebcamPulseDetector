@@ -80,8 +80,8 @@ class PulseDetector:
         self.smoothing_factor = 0.7  # Will be updated from visualizer
         self.min_region_size = (30, 20)
         self.snr = 0
-        self.bandpass_low = 0.75  # Will be updated from visualizer
-        self.bandpass_high = 4.0  # Will be updated from visualizer
+        self.bandpass_low = 45  # Will be updated from visualizer
+        self.bandpass_high = 240  # Will be updated from visualizer
 
     def update_settings(self, params):
         """Update processor settings from visualizer"""
@@ -242,8 +242,8 @@ class PulseDetector:
             # Bandpass filter
             fps = len(combined_signal) / (times[-1] - times[0])
             nyquist = 0.5 * fps
-            low = self.bandpass_low / nyquist
-            high = self.bandpass_high / nyquist
+            low = self.bandpass_low / (nyquist * 60)
+            high = self.bandpass_high / (nyquist * 60)
 
             b, a = scipy_signal.butter(3, [low, high], btype='band')
             filtered = scipy_signal.filtfilt(b, a, combined_signal)
