@@ -39,8 +39,8 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
   - [x] Adjustable:
     - [x] Detection box offsets
     - [x] Region weights
+    - [x] Bandpass settings
     - [ ] Box widths/heights
-    - [ ] Bandpass settings
 - [ ] Export data functionality
 
 ## Usage
