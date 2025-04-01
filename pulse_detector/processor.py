@@ -24,7 +24,7 @@ class PulseDetector:
         self.buffer_size = 250
         self.times = []
         self.bpm = 0
-        self.fps = 60
+        self.fps = 30
 
         # Face detection
         self.face_cascade = cv2.CascadeClassifier(resource_path("haarcascade_frontalface_alt.xml"))
@@ -34,7 +34,7 @@ class PulseDetector:
 
         self.face_rect = None
         self.tracking_faces = True
-        self.detection_interval = 5
+        self.detection_interval = 1
         self.frame_count = 0
 
         # Initialize with default regions (will be updated from visualizer)
@@ -90,6 +90,7 @@ class PulseDetector:
         self.smoothing_factor = params['smoothing']
         self.bandpass_low = params['bandpass_low']
         self.bandpass_high = params['bandpass_high']
+        self.detection_interval = params['detection_interval']
 
         # Update regions
         for region_name in self.regions:

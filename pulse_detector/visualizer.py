@@ -39,7 +39,8 @@ class PulseVisualizer:
             },
             'buffer_size': 250,
             'bandpass_low': 45,
-            'bandpass_high': 240
+            'bandpass_high': 240,
+            'detection_interval': 5
         }
 
         # Apply the theme
@@ -77,7 +78,7 @@ class PulseVisualizer:
 
         self.settings_window = tk.Toplevel(self.root)
         self.settings_window.title("Settings")
-        self.settings_window.geometry("760x580")
+        self.settings_window.geometry("780x575")
         self.settings_window.resizable(False, False)
 
         # Prevent multiple settings windows
@@ -210,6 +211,19 @@ class PulseVisualizer:
             textvariable=self.bandpass_high_var,
             width=5
         ).pack(side=tk.LEFT, padx=5)
+
+        # Detection Interval
+        face_frame = ttk.LabelFrame(col2_frame, text="Face Detection Interval (Frames)", padding=10)
+        face_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        self.detection_interval_var = tk.IntVar(value=self.params['detection_interval'])
+        ttk.Spinbox(
+            face_frame,
+            from_=1,
+            to=20,
+            textvariable=self.detection_interval_var,
+            width=7
+        ).pack(anchor='w', pady=2)
 
         # Theme Selection
         theme_frame = ttk.LabelFrame(col2_frame, text="Theme", padding=10)
@@ -480,6 +494,7 @@ class PulseVisualizer:
             'max_bpm': self.max_bpm_var.get(),
             'smoothing': self.smoothing_var.get(),
             'buffer_size': self.buffer_size_var.get(),
+            'detection_interval': self.detection_interval_var.get(),
             'bandpass_low': self.bandpass_low_var.get(),
             'bandpass_high': self.bandpass_high_var.get(),
             'theme': self.theme_var.get(),
