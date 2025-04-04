@@ -212,19 +212,6 @@ class PulseVisualizer:
             width=5
         ).pack(side=tk.LEFT, padx=5)
 
-        # Detection Interval
-        face_frame = ttk.LabelFrame(col2_frame, text="Face Detection Interval (Frames)", padding=10)
-        face_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        self.detection_interval_var = tk.IntVar(value=self.params['detection_interval'])
-        ttk.Spinbox(
-            face_frame,
-            from_=1,
-            to=20,
-            textvariable=self.detection_interval_var,
-            width=7
-        ).pack(anchor='w', pady=2)
-
         # Theme Selection
         theme_frame = ttk.LabelFrame(col2_frame, text="Theme", padding=10)
         theme_frame.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -507,7 +494,6 @@ class PulseVisualizer:
             'max_bpm': self.max_bpm_var.get(),
             'smoothing': self.smoothing_var.get(),
             'buffer_size': self.buffer_size_var.get(),
-            'detection_interval': self.detection_interval_var.get(),
             'bandpass_low': self.bandpass_low_var.get(),
             'bandpass_high': self.bandpass_high_var.get(),
             'detection_interval': self.detection_interval_var.get(),
