@@ -3,7 +3,7 @@
 ## Overview
 This project is a real-time pulse detection system that uses a webcam to measure heart rate by detecting subtle color changes in facial skin caused by blood flow. The system processes video frames to extract pulse signals and calculates the heart rate in beats per minute (BPM).
 
-The project is inspired by [thearn/webcam-pulse-detector](https://github.com/thearn/webcam-pulse-detector/tree/no_openmdao), with enhancements in face tracking, signal processing, and visualization.
+The project is inspired by [thearn/webcam-pulse-detector](https://github.com/thearn/webcam-pulse-detector/tree/no_openmdao), with enhancements in face tracking (with rotation and scaling), signal processing, and visualization.
 
 ![app_preview](preview.png)
 
@@ -41,8 +41,18 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
     - [x] Bandpass settings
     - [x] Box widths/heights
 - [X] Export data functionality
-- [ ] Further data processing and SNR improvements
-- [ ] Create an executable file and attach it to repo
+- [X] Further data processing and SNR improvements
+- [X] Create an executable file and attach it to repo
+
+## Latest Release
+- Version 1.0.0 (Executable added)
+- An executable version of the Webcam Pulse Detector is also available. You can download the .exe file below for easy installation and use without the need to set up the environment manually.
+
+Download Link:
+
+[Download Webcam Pulse Detector v1.0.0 (Windows)](https://github.com/0treble/WebcamPulseDetector/releases/tag/v1.0.0)
+
+You can also generate the executable yourself running `build.py`.
 
 ## Usage
 1. Position yourself in front of the webcam (well-lit environment works best)
@@ -56,7 +66,7 @@ The project is inspired by [thearn/webcam-pulse-detector](https://github.com/the
 4. Current BPM and signal quality (SNR) are displayed above forehead region
 
 ## Technical Details
-- **Face Detection**: Uses Haar Cascade classifiers with continuous tracking
+- **Face Detection**: Uses MediaPipe with continuous tracking
 - **Signal Extraction**: 
   - Green channel averaging from multiple facial regions
   - Weighted combination (80% forehead, 10% each cheek by default)

@@ -150,10 +150,6 @@ Thumbs.db
 *.hdf5
 *.h5
 
-# Haar cascade XML files (except the one we're using)
-haarcascade_*.xml
-!haarcascade_frontalface_alt.xml
-
 # Python cache
 *.pyc
 

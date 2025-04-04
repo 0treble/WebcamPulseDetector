@@ -33,13 +33,14 @@ class PulseVisualizer:
             'smoothing': 0.7,
             'theme': 'equilux',
             'regions': {
-                'forehead': {'enabled': True, 'weight': 0.8, 'offset_y': 0.18, 'offset_x': 0, 'scale_w': 0.35, 'scale_h': 0.25},
-                'left_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0.50, 'offset_x': -0.2, 'scale_w': 0.2, 'scale_h': 0.15},
-                'right_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0.50, 'offset_x': 0.2, 'scale_w': 0.2, 'scale_h': 0.15}
+                'forehead': {'enabled': True, 'weight': 0.8, 'offset_y': -0.35, 'offset_x': 0, 'scale_w': 0.35, 'scale_h': 0.25},
+                'left_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0, 'offset_x': -0.2, 'scale_w': 0.2, 'scale_h': 0.15},
+                'right_cheek': {'enabled': True, 'weight': 0.1, 'offset_y': 0, 'offset_x': 0.2, 'scale_w': 0.2, 'scale_h': 0.15}
             },
             'buffer_size': 250,
             'bandpass_low': 45,
-            'bandpass_high': 240
+            'bandpass_high': 240,
+            'detection_interval': 5
         }
 
         # Apply the theme
@@ -229,6 +230,19 @@ class PulseVisualizer:
             value='arc'
         ).pack(anchor='w', pady=2)
 
+        # Detection Interval
+        face_frame = ttk.LabelFrame(col2_frame, text="Face Detection Interval (Frames)", padding=10)
+        face_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.detection_interval_var = tk.IntVar(value=self.params['detection_interval'])
+
+        ttk.Spinbox(
+            face_frame,
+            from_=1,
+            to=20,
+            textvariable=self.detection_interval_var,
+            width=7
+        ).pack(anchor='w', pady=2)
+
         # Data Saving
         save_frame = ttk.LabelFrame(col3_frame, text="Data Saving", padding=10)
         save_frame.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -279,7 +293,7 @@ class PulseVisualizer:
         self.forehead_offset_y_var = tk.DoubleVar(value=self.params['regions']['forehead']['offset_y'])
         ttk.Spinbox(
             settings_grid,
-            from_=0.0,
+            from_=-1.0,
             to=1.0,
             increment=0.05,
             textvariable=self.forehead_offset_y_var,
@@ -290,7 +304,7 @@ class PulseVisualizer:
         self.forehead_scale_w_var = tk.DoubleVar(value=self.params['regions']['forehead']['scale_w'])
         ttk.Spinbox(
             settings_grid,
-            from_=0.1,
+            from_=-1.0,
             to=1.0,
             increment=0.05,
             textvariable=self.forehead_scale_w_var,
@@ -348,7 +362,7 @@ class PulseVisualizer:
         self.left_cheek_offset_y_var = tk.DoubleVar(value=self.params['regions']['left_cheek']['offset_y'])
         ttk.Spinbox(
             settings_grid,
-            from_=0.0,
+            from_=-1.0,
             to=1.0,
             increment=0.05,
             textvariable=self.left_cheek_offset_y_var,
@@ -417,7 +431,7 @@ class PulseVisualizer:
         self.right_cheek_offset_y_var = tk.DoubleVar(value=self.params['regions']['right_cheek']['offset_y'])
         ttk.Spinbox(
             settings_grid,
-            from_=0.0,
+            from_=-1.0,
             to=1.0,
             increment=0.05,
             textvariable=self.right_cheek_offset_y_var,
@@ -482,6 +496,7 @@ class PulseVisualizer:
             'buffer_size': self.buffer_size_var.get(),
             'bandpass_low': self.bandpass_low_var.get(),
             'bandpass_high': self.bandpass_high_var.get(),
+            'detection_interval': self.detection_interval_var.get(),
             'theme': self.theme_var.get(),
             'regions': {
                 'forehead': {
